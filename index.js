@@ -35,24 +35,58 @@ setTimeout(() => {
   });
 }, 5000);
 twitch.on('messageStreamStarted', (stream) => {
-  let notificationMessage = '<' + stream.url + '> just went live: ' + stream.title;
-  console.log(notificationMessage);
-  notifyDiscordChannel.send(notificationMessage).then((message) => {
-    console.log(message);
-  }).catch((e) => {
+  let notificationMessage = stream.url +' just went live on Twitch playing ' + stream.game + ': ' + stream.title;
+  //console.log(notificationMessage);
+  let channel = discordClient.channels.get(config['discord-notifications-channel-id']); 
+  var postDate = JSON.parse(JSON.stringify(new Date()));
+  const embed = {
+    "title": stream.url + " just went live: " + stream.title,
+    "url": stream.url,
+    "color": 1369976,
+    "timestamp": postDate,
+    "footer": {
+      "icon_url": "https://i.imgur.com/7zzwfz8.png",
+      "text": "Playing " + stream.game
+    },
+    "thumbnail": {
+      "url": "https://i.imgur.com/8QvKAk4.png"
+    },
+    "author": {
+      "name": stream.name + " is now live on Twitch!",
+      "url": stream.url,
+      "icon_url": "https://cdn.discordapp.com/app-icons/467693631986466825/f6b52aef5431c2814e2c164a36383955.png"
+    }
+  };
+  channel.send({ embed }).catch((e) => {
     console.log(e);
   });
+ 
+ /* notifyDiscordChannel.send(notificationMessage).then((message) => {
+    //console.log(message);
+  })*/
 });
 twitch.on('messageStreamDeleted', (stream) => {
-  // Do nothing.
+  console.log (stream.url + " went offline");
+  let channel = discordClient.channels.get(config['discord-notifications-channel-id']); 
+  channel.fetchMessages({limit: 30})
+    .then(messages => messages.forEach(message => {
+     if ((message.embeds) && (message.embeds.length >0)) {
+        if (message.embeds[0].message.embeds[0].url == stream.url) {
+          message.delete();
+          console.log(message.id + " live message deleted!");
+        }
+      }
+      /*if (message.content.includes(stream.url))
+      message.delete();*/
+      
+    }))
+    .catch(console.error);
 });
 discordClient.on('ready', () => {
   function failToSet(setting) {return (e) => {
     console.log('Failed to set ' + setting);
     console.log(e);
   }}
-  discordClient.user.setUsername(config['bot-user-name']).catch(failToSet('username'));
-  discordClient.user.setAvatar(config['bot-avatar-url']).catch(failToSet('avatar'));
   discordClient.user.setPresence({
     "status": 'online',
     "game": {
@@ -66,6 +100,65 @@ function toWeirdCase (pattern, str) {
 discordClient.on('message', (message) => {
   let streamCommandRegex = /^(\.|!)streams$/i;
   let streamNotCased = /^(\.|!)streams$/;
+  let commandClear = /^(\.|!)clear$/;
+  let channel = discordClient.channels.get(config['discord-notifications-channel-id']); 
+  let testCommand = /^(\.|!)test$/;
+  if (message.channel.id === responseDiscordChannel.id && testCommand.test(message.content)) {
+    var postDate = JSON.parse(JSON.stringify(new Date()));
+    const embed = {
+      "title": "Test" + " just went live playing " + "TP",
+      "url": "https://twitch.tv",
+      "color": 1369976,
+      "timestamp": postDate,
+      "footer": {
+        "icon_url": "https://i.imgur.com/7zzwfz8.png",
+        "text": "Live on Twitch now!"
+      },
+      "thumbnail": {
+        "url": "https://i.imgur.com/8QvKAk4.png"
+      },
+      "author": {
+        "name": "Test" + " is live on Twitch!",
+        "url": "https://twitch.tv",
+        "icon_url": "https://cdn.discordapp.com/app-icons/467693631986466825/f6b52aef5431c2814e2c164a36383955.png"
+      }
+    };
+    channel.send({ embed }).catch((e) => {
+      console.log(e);
+    });
+    var delay = setTimeout(() => {
+      channel.fetchMessages({limit: 30})
+      .then(messages => messages.forEach(message => {
+       if (message.embeds) 
+        console.log("url: " + message.embeds[0].message.embeds[0].url);
+      }));
+    }, 2000);
+  }
+  if (message.channel.id === responseDiscordChannel.id && commandClear.test(message.content)) {
+      channel.fetchMessages({ limit: 99 })
+      .then(messages => {
+        if (messages.size > 2) {
+          channel.bulkDelete(messages, false)
+            .then(() => {
+
+              console.log("Removed " + messages.size + " messages");
+           });
+        }
+        else if (messages.size > 0) {
+
+          console.log("Remove final " + messages.size + " messages");
+
+          Array.from(messages.values()).forEach(message => {
+
+            message.delete();
+          });
+        }
+        else {
+          console.log("No more messages left");
+        }
+      })
+      .catch(error => log.info(error));
+  };
   if (message.channel.id === responseDiscordChannel.id && streamCommandRegex.test(message.content)) {
     let applyWeirdCase = !streamNotCased.test(message.content);
     let streams = twitch.getStreams();
